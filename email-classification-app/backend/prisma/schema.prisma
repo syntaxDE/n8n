@@ -1,0 +1,248 @@
+// Prisma Schema für Email Classification App
+// Database: Supabase PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Benutzer (Steuerberater & Mitarbeiter)
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         Role     @default(USER)
+  microsoftId  String?  @unique @map("microsoft_id")
+  accessToken  String?  @map("access_token") @db.Text
+  refreshToken String?  @map("refresh_token") @db.Text
+  tokenExpiry  DateTime? @map("token_expiry")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relationen
+  emails       Email[]
+  drafts       Draft[]
+  settings     Settings?
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+// E-Mails
+model Email {
+  id           String   @id @default(cuid())
+  emailId      String   @unique @map("email_id") // Outlook Message ID
+
+  // E-Mail Daten
+  from         String
+  fromName     String?  @map("from_name")
+  subject      String
+  body         String   @db.Text
+  bodyPreview  String?  @map("body_preview")
+
+  // Klassifikation
+  category     EmailCategory
+
+  // Status
+  status       EmailStatus @default(UNREAD)
+  hasAttachments Boolean @default(false) @map("has_attachments")
+  attachmentCount Int @default(0) @map("attachment_count")
+
+  // Zeitstempel
+  receivedAt   DateTime @map("received_at")
+  processedAt  DateTime? @map("processed_at")
+
+  // Beziehungen
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  drafts       Draft[]
+  events       Event[]
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, category])
+  @@index([receivedAt])
+  @@index([status])
+  @@map("emails")
+}
+
+enum EmailCategory {
+  HOHE_PRIORITAET     @map("Hohe Priorität")
+  RECHNUNGEN_FINANZEN @map("Rechnungen & Finanzen")
+  MANDANTENANFRAGEN   @map("Mandantenanfragen")
+}
+
+enum EmailStatus {
+  UNREAD
+  READ
+  PROCESSED
+  ARCHIVED
+}
+
+// Antwort-Entwürfe
+model Draft {
+  id           String   @id @default(cuid())
+  draftId      String?  @unique @map("draft_id") // Outlook Draft ID
+
+  // Entwurf-Daten
+  recipient    String
+  subject      String
+  body         String   @db.Text
+  bodyHtml     String?  @map("body_html") @db.Text
+
+  // Status
+  status       DraftStatus @default(PENDING)
+
+  // Beziehungen
+  emailId      String   @map("email_id")
+  email        Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Zeitstempel
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  sentAt       DateTime? @map("sent_at")
+
+  @@index([emailId])
+  @@index([status])
+  @@map("drafts")
+}
+
+enum DraftStatus {
+  PENDING   // Wartet auf Review
+  APPROVED  // Freigegeben
+  SENT      // Versendet
+  REJECTED  // Abgelehnt
+  EDITED    // Manuell bearbeitet
+}
+
+// Kalender-Events (Fristen)
+model Event {
+  id             String   @id @default(cuid())
+  eventId        String?  @unique @map("event_id") // Outlook Calendar Event ID
+
+  // Event-Daten
+  title          String
+  description    String?  @db.Text
+  startDateTime  DateTime @map("start_date_time")
+  endDateTime    DateTime @map("end_date_time")
+  timeZone       String   @default("Europe/Berlin") @map("time_zone")
+
+  // Beziehungen
+  emailId        String   @map("email_id")
+  email          Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([emailId])
+  @@index([startDateTime])
+  @@map("events")
+}
+
+// Statistiken (Dashboard)
+model Statistic {
+  id                   String   @id @default(cuid())
+  date                 DateTime @unique @db.Date
+
+  // Zähler
+  totalEmails          Int      @default(0) @map("total_emails")
+  hohePrioritaet       Int      @default(0) @map("hohe_prioritaet")
+  mandantenanfragen    Int      @default(0) @map("mandantenanfragen")
+  rechnungenFinanzen   Int      @default(0) @map("rechnungen_finanzen")
+  draftsCreated        Int      @default(0) @map("drafts_created")
+  eventsCreated        Int      @default(0) @map("events_created")
+  deadlinesCount       Int      @default(0) @map("deadlines_count")
+
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@map("statistics")
+}
+
+// Einstellungen
+model Settings {
+  id                    String   @id @default(cuid())
+
+  // E-Mail Processing
+  pollingInterval       Int      @default(5) @map("polling_interval") // Minuten
+  autoProcessEmails     Boolean  @default(true) @map("auto_process_emails")
+
+  // AI Settings
+  aiModel               String   @default("mistral-large-latest") @map("ai_model")
+  aiTemperature         Float    @default(0.2) @map("ai_temperature")
+  usePerplexity         Boolean  @default(true) @map("use_perplexity")
+
+  // Notifications
+  notifyHighPriority    Boolean  @default(true) @map("notify_high_priority")
+  notifyDeadlines       Boolean  @default(true) @map("notify_deadlines")
+
+  // Outlook Folder IDs
+  folderHighPriority    String?  @map("folder_high_priority")
+  folderInvoices        String?  @map("folder_invoices")
+  folderClientRequests  String?  @map("folder_client_requests")
+
+  // Beziehungen
+  userId                String   @unique @map("user_id")
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+// Conversation Memory (für AI Agent Context)
+model ConversationMemory {
+  id           String   @id @default(cuid())
+  sessionKey   String   @map("session_key") // z.B. E-Mail-Adresse
+
+  role         String   // "user" oder "assistant"
+  content      String   @db.Text
+
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([sessionKey, createdAt])
+  @@map("conversation_memory")
+}
+
+// Job Queue Status (optional, für Monitoring)
+model JobLog {
+  id           String   @id @default(cuid())
+  jobId        String   @unique @map("job_id")
+  jobName      String   @map("job_name")
+
+  status       JobStatus
+  data         Json?
+  error        String?  @db.Text
+
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([status])
+  @@index([jobName])
+  @@map("job_logs")
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}

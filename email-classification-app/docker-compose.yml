@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # Redis für BullMQ Job Queue
+  redis:
+    image: redis:7-alpine
+    container_name: email-app-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: email-app-backend
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET}
+      - MICROSOFT_TENANT_ID=${MICROSOFT_TENANT_ID}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Web App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: email-app-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:4000
+      - REACT_APP_MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: email-app-network
