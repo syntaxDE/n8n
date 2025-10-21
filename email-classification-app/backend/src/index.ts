@@ -30,16 +30,18 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes (TODO: Import actual routes)
-// import authRoutes from './routes/authRoutes';
-// import emailRoutes from './routes/emailRoutes';
-// import draftRoutes from './routes/draftRoutes';
-// import statsRoutes from './routes/statsRoutes';
+// API Routes
+import authRoutes from './routes/authRoutes';
+import emailRoutes from './routes/emailRoutes';
+import draftRoutes from './routes/draftRoutes';
+import statsRoutes from './routes/statsRoutes';
+import settingsRoutes from './routes/settingsRoutes';
 
-// app.use('/api/auth', authRoutes);
-// app.use('/api/emails', emailRoutes);
-// app.use('/api/drafts', draftRoutes);
-// app.use('/api/stats', statsRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/emails', emailRoutes);
+app.use('/api/drafts', draftRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
